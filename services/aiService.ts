@@ -36,6 +36,10 @@ export interface TranscriptionOptions {
  * Helper to safely parse timestamps from AI response
  * Handles numbers, string numbers ("60000"), and formatted strings ("01:00.000")
  */
+// Check file size (20MB limit for inline data)
+if (file.size > 20 * 1024 * 1024) {
+  throw new Error("File size exceeds 20MB limit for inline media. Please use a smaller file or split the audio.");
+}
 const parseAiTimestamp = (val: any): number => {
     if (typeof val === 'number') return Math.round(val);
     if (typeof val === 'string') {
