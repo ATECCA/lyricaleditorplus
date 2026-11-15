@@ -209,8 +209,8 @@ export function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   
   // Transcription States
-  const [transcribeModel, setTranscribeModel] = useState('gemini-2.5-flash');
-  const [sidebarTranscribeModel, setSidebarTranscribeModel] = useState('gemini-2.5-flash'); // Separate state for sidebar
+  const [transcribeModel, setTranscribeModel] = useState('gemini-3.8-flash');
+  const [sidebarTranscribeModel, setSidebarTranscribeModel] = useState('gemini-3.8-flash'); // Separate state for sidebar
   const [transcribeMode, setTranscribeMode] = useState<'lines' | 'words'>('lines');
   const [sidebarTranscribeMode, setSidebarTranscribeMode] = useState<'lines' | 'words'>('lines'); // Separate state for sidebar
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -1164,6 +1164,7 @@ export function App() {
                                     >
                                         <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
                                         <option value="gemini-3-flash-preview">Gemini 3.0 Flash</option>
+                                        <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
                                     </select>
                                 </div>
                                 <div>
@@ -1550,6 +1551,7 @@ export function App() {
                                    >
                                       <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
                                       <option value="gemini-3-flash-preview">Gemini 3.0 Flash</option>
+                                      <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
                                    </select>
                                 </div>
                                 <div>

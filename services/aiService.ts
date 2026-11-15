@@ -53,10 +53,22 @@ const parseAiTimestamp = (val: any): number => {
   return 0;
 };
 
+const DEFAULT_TRANSCRIPTION_MODEL = 'gemini-3.8-flash';
+
 /**
- * Automatically maps outdated UI dropdown model IDs to active frontier models
+ * Keep older saved UI selections working while using supported transcription models.
  */
-const resolveModelId = (requestedModel?: string): string => {
+const resolveTranscriptionModelId = (requestedModel?: string): string => {
+  if (!requestedModel) {
+    return DEFAULT_TRANSCRIPTION_MODEL;
+  }
+  if (requestedModel === 'gemini-3.0-flash') {
+    return 'gemini-3-flash-preview';
+  }
+  return requestedModel;
+};
+
+const resolveGenerationModelId = (requestedModel?: string): string => {
   if (!requestedModel || requestedModel === 'gemini-2.5-flash') {
     return 'gemini-3.8-flash';
   }
@@ -64,13 +76,13 @@ const resolveModelId = (requestedModel?: string): string => {
     requestedModel === 'gemini-3.0-flash' ||
     requestedModel === 'gemini-3-flash-preview'
   ) {
-    return 'gemini-4-hydrogen';
+    return 'gemini-3.8-flash';
   }
   if (
     requestedModel === 'gemini-3.0-pro' ||
     requestedModel === 'gemini-3-pro-preview'
   ) {
-    return 'gemini-4-argon';
+    return 'gemini-3.8-pro';
   }
   return requestedModel;
 };
@@ -80,16 +92,16 @@ export const transcribeAudio = async (
   options: TranscriptionOptions,
   signal?: AbortSignal
 ): Promise<Cue[]> => {
-  // Support files up to 500MB (Gemini Files API supports up to 2GB)
-  const MAX_FILE_SIZE = 500 * 1024 * 1024;
+  // Gemini Files API supports files up to 2GB.
+  const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024;
   if (file.size > MAX_FILE_SIZE) {
     throw new Error(
-      'File size exceeds 500MB limit. Please compress or split the audio file.'
+      'File size exceeds the 2GB limit. Please compress or split the audio file.'
     );
   }
 
   const ai = getAiClient();
-  const modelName = resolveModelId(options.model);
+  const modelName = resolveTranscriptionModelId(options.model);
   const isWordsMode = options.mode === 'words';
 
   let audioContentPart: any;
@@ -248,6 +260,17 @@ export const transcribeAudio = async (
       throw new Error('Transcription cancelled by user.');
     }
     console.error('Transcription failed', error);
+    const errorText = error instanceof Error ? error.message : String(error);
+    if (
+      errorText.includes('503') ||
+      errorText.includes('UNAVAILABLE') ||
+      errorText.includes('high demand')
+    ) {
+      throw new Error(
+        `The selected Gemini model is temporarily unavailable due to high demand. ` +
+        `Choose another transcription model or try again later.`
+      );
+    }
     throw error;
   } finally {
     // Clean up uploaded large file from Google servers
@@ -266,7 +289,7 @@ export const generateLyrics = async (
   model: string = 'gemini-3.8-flash'
 ): Promise<Cue[]> => {
   const ai = getAiClient();
-  const modelName = resolveModelId(model);
+  const modelName = resolveGenerationModelId(model);
 
   const prompt = `Generate song lyrics about: "${topic}". 
   Return the result as a plain text string with line breaks. 
@@ -316,4 +339,144 @@ export const generateLyrics = async (
     console.error('Lyrics generation failed', error);
     throw error;
   }
+};
+
+export const refineLyrics = async (
+  cues: Cue[],
+  instruction: string,
+  model: string = 'gemini-3.8-flash'
+): Promise<Cue[]> => {
+  const ai = getAiClient();
+  const modelName = resolveGenerationModelId(model);
+  const simplifiedCues = cues.map(({ id, text }) => ({ id, text }));
+  const prompt = `Refine the following lyrics based on this instruction: "${instruction}".
+
+Input Lyrics JSON:
+${JSON.stringify(simplifiedCues)}
+
+Return a JSON array with objects containing "id" and "text".
+Keep IDs matching the input so timestamps can be preserved.
+If you split lines or add new ones, generate IDs starting with "ai-new-".`;
+
+  const responseSchema = {
+    type: Type.ARRAY,
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        id: { type: Type.STRING },
+        text: { type: Type.STRING },
+      },
+      required: ['id', 'text'],
+    },
+  };
+
+  try {
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema,
+      },
+    });
+
+    if (!response.text) return cues;
+
+    const refinedData = JSON.parse(response.text);
+    const idMap = new Map(cues.map((cue) => [cue.id, cue]));
+    const newCues: Cue[] = [];
+    let lastEnd = 0;
+
+    for (const item of refinedData) {
+      const original = idMap.get(item.id);
+      if (original) {
+        newCues.push({
+          ...original,
+          text: item.text,
+          words: item.text !== original.text ? undefined : original.words,
+        });
+        lastEnd = original.end;
+      } else {
+        newCues.push({
+          id: item.id || `refine-${Date.now()}-${newCues.length}`,
+          start: lastEnd,
+          end: lastEnd + 2000,
+          text: item.text || '',
+        });
+        lastEnd += 2000;
+      }
+    }
+
+    return newCues;
+  } catch (error) {
+    console.error('Lyrics refinement failed', error);
+    throw error;
+  }
+};
+
+let currentUtterance: SpeechSynthesisUtterance | null = null;
+
+export const stopTTS = () => {
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+  currentUtterance = null;
+};
+
+export const playTTS = async (
+  text: string,
+  lang: string = 'en'
+): Promise<void> => {
+  stopTTS();
+
+  const textToSpeak = text.trim();
+  if (!textToSpeak) return;
+
+  if (typeof window === 'undefined' || !window.speechSynthesis) {
+    throw new Error('Web Speech API is not supported in this browser.');
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const utterance = new SpeechSynthesisUtterance(textToSpeak);
+    currentUtterance = utterance;
+
+    const speak = () => {
+      const voices = window.speechSynthesis.getVoices();
+      const matchedVoice =
+        voices.find((voice) => voice.voiceURI === lang) ||
+        voices.find((voice) => voice.lang.startsWith(lang)) ||
+        voices.find((voice) => voice.lang.startsWith(lang.split('-')[0]));
+
+      if (matchedVoice) {
+        utterance.voice = matchedVoice;
+        utterance.lang = matchedVoice.lang;
+      } else {
+        utterance.lang = lang;
+      }
+
+      utterance.onend = () => {
+        if (currentUtterance === utterance) currentUtterance = null;
+        resolve();
+      };
+      utterance.onerror = (event) => {
+        if (currentUtterance === utterance) currentUtterance = null;
+        if (event.error === 'canceled') {
+          resolve();
+        } else {
+          reject(new Error(`Failed to play TTS: ${event.error}`));
+        }
+      };
+
+      window.speechSynthesis.speak(utterance);
+    };
+
+    if (window.speechSynthesis.getVoices().length === 0) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.onvoiceschanged = null;
+        speak();
+      };
+    } else {
+      speak();
+    }
+  });
 };
