@@ -59,13 +59,11 @@ const DEFAULT_TRANSCRIPTION_MODEL = 'gemini-3.8-flash';
  * Keep older saved UI selections working while using supported transcription models.
  */
 const resolveTranscriptionModelId = (requestedModel?: string): string => {
-  if (
-    !requestedModel ||
-    requestedModel === 'gemini-2.5-flash' ||
-    requestedModel === 'gemini-3.0-flash' ||
-    requestedModel === 'gemini-3-flash-preview'
-  ) {
+  if (!requestedModel) {
     return DEFAULT_TRANSCRIPTION_MODEL;
+  }
+  if (requestedModel === 'gemini-3.0-flash') {
+    return 'gemini-3-flash-preview';
   }
   return requestedModel;
 };
@@ -262,6 +260,17 @@ export const transcribeAudio = async (
       throw new Error('Transcription cancelled by user.');
     }
     console.error('Transcription failed', error);
+    const errorText = error instanceof Error ? error.message : String(error);
+    if (
+      errorText.includes('503') ||
+      errorText.includes('UNAVAILABLE') ||
+      errorText.includes('high demand')
+    ) {
+      throw new Error(
+        `The selected Gemini model is temporarily unavailable due to high demand. ` +
+        `Choose another transcription model or try again later.`
+      );
+    }
     throw error;
   } finally {
     // Clean up uploaded large file from Google servers
