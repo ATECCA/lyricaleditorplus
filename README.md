@@ -18,7 +18,8 @@ Powered by **Google Gemini AI**, it automates tedious tasks like transcription, 
 *   **Responsive Design:** Optimized for desktops, tablets, and mobile devices with a seamless **Light/Dark mode** toggle.
 
 ### 🤖 AI-Powered Intelligence
-*   **Transcription:** Instantly convert audio/video to text using **Gemini 2.5 Flash** or **Gemini 3.0 Flash**. Choose between standard lines or **Word-Level Karaoke** mode.
+*   **Transcription:** Instantly convert audio/video to text using **Gemini 3.8 Flash**. Choose between standard lines or **Word-Level Karaoke** mode.
+*   **Large Media:** Audio and video files up to **2 GB** are supported through the Gemini Files API.
 *   **Creative Generation:** Generate lyrics from scratch based on a mood or topic using **Gemini 3.0 Pro**.
 *   **Smart Refinement:** Use the AI Assistant to translate, fix grammar, or reformat lyrics with natural language instructions.
 

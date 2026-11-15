@@ -209,8 +209,8 @@ export function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   
   // Transcription States
-  const [transcribeModel, setTranscribeModel] = useState('gemini-2.5-flash');
-  const [sidebarTranscribeModel, setSidebarTranscribeModel] = useState('gemini-2.5-flash'); // Separate state for sidebar
+  const [transcribeModel, setTranscribeModel] = useState('gemini-3.8-flash');
+  const [sidebarTranscribeModel, setSidebarTranscribeModel] = useState('gemini-3.8-flash'); // Separate state for sidebar
   const [transcribeMode, setTranscribeMode] = useState<'lines' | 'words'>('lines');
   const [sidebarTranscribeMode, setSidebarTranscribeMode] = useState<'lines' | 'words'>('lines'); // Separate state for sidebar
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -1162,8 +1162,7 @@ export function App() {
                                         onChange={(e) => setTranscribeModel(e.target.value)}
                                         className="w-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-2 py-2 text-xs outline-none"
                                     >
-                                        <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                                        <option value="gemini-3-flash-preview">Gemini 3.0 Flash</option>
+                                        <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
                                     </select>
                                 </div>
                                 <div>
@@ -1548,8 +1547,7 @@ export function App() {
                                       onChange={(e) => setSidebarTranscribeModel(e.target.value)}
                                       className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary-500/20"
                                    >
-                                      <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                                      <option value="gemini-3-flash-preview">Gemini 3.0 Flash</option>
+                                      <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
                                    </select>
                                 </div>
                                 <div>
