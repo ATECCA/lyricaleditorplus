@@ -8,7 +8,7 @@ For a version with Web Speech API Text-to-Speech, use the `web-speech-api` branc
 
 Powered by **Google Gemini AI**, it automates tedious tasks like transcription, synchronization, and content generation.
 
-![Home Screen](screenshot-home.jpg)
+![Home Screen]()
 
 ## 🚀 Key Features
 
@@ -50,7 +50,7 @@ Located in the **Global Tools** menu and bottom toolbar:
 *   **Looping:** Toggle repeat mode to focus on specific sections during playback.
 *   **Sort Rows:** Chronologically reorder cues if they get out of sync.
 
-![Editor Interface](screenshot-editor.jpg)
+![Editor Interface]()
 
 ## 📦 Export Options
 
