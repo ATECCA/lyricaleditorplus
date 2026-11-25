@@ -522,3 +522,119 @@ export const generateLyrics = async (
     throw error;
   }
 };
+
+export const refineLyrics = async (
+  cues: Cue[],
+  instructions: string,
+  model: string = 'gemini-3.8-flash'
+): Promise<Cue[]> => {
+  if (cues.length === 0) return [];
+
+  const ai = getAiClient();
+  const modelName = resolveModelId(model);
+  const response = await ai.models.generateContent({
+    model: modelName,
+    contents: `Apply the user's instructions to the lyric text only. Keep the same number and order of lines. Do not add timestamps or rewrite the JSON structure. Return one object per input line with its index and revised text.\n\nInstructions: ${instructions}\n\nLyrics:\n${JSON.stringify(
+      cues.map((cue, index) => ({ index, text: cue.text }))
+    )}`,
+    config: {
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            index: { type: Type.NUMBER },
+            text: { type: Type.STRING },
+          },
+          required: ['index', 'text'],
+        },
+      },
+      temperature: 0.2,
+    },
+  });
+
+  if (!response.text) {
+    throw new Error('The AI returned no refined lyrics.');
+  }
+
+  const refinedLines: unknown = JSON.parse(response.text);
+  if (!Array.isArray(refinedLines) || refinedLines.length !== cues.length) {
+    throw new Error('The AI returned an incomplete set of refined lines.');
+  }
+
+  return cues.map((cue, index) => {
+    const result = refinedLines[index];
+    if (
+      !result ||
+      typeof result !== 'object' ||
+      !('index' in result) ||
+      result.index !== index ||
+      !('text' in result) ||
+      typeof result.text !== 'string'
+    ) {
+      throw new Error(`The AI returned invalid refined lyrics for line ${index + 1}.`);
+    }
+
+    return result.text === cue.text
+      ? cue
+      : { ...cue, text: result.text, words: undefined };
+  });
+};
+
+let activeSpeechResolve: (() => void) | null = null;
+
+export const stopTTS = () => {
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+  const resolve = activeSpeechResolve;
+  activeSpeechResolve = null;
+  resolve?.();
+};
+
+export const playTTS = (text: string, language = 'en-US'): Promise<void> =>
+  new Promise((resolve, reject) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      reject(new Error('Text-to-speech is not available in this browser.'));
+      return;
+    }
+    if (!text.trim()) {
+      resolve();
+      return;
+    }
+
+    stopTTS();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = language;
+    const voices = window.speechSynthesis.getVoices();
+    utterance.voice =
+      voices.find((voice) => voice.voiceURI === language) ??
+      voices.find((voice) => voice.lang.toLowerCase() === language.toLowerCase()) ??
+      voices.find((voice) =>
+        voice.lang.toLowerCase().startsWith(`${language.split('-')[0].toLowerCase()}-`)
+      ) ??
+      null;
+
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      activeSpeechResolve = null;
+      if (error) reject(error);
+      else resolve();
+    };
+
+    activeSpeechResolve = () => finish();
+    utterance.onend = () => finish();
+    utterance.onerror = (event) => {
+      finish(new Error(`Text-to-speech failed: ${event.error}.`));
+    };
+
+    try {
+      window.speechSynthesis.speak(utterance);
+    } catch (error) {
+      finish(error instanceof Error ? error : new Error(String(error)));
+    }
+  });
