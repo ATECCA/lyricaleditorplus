@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Cue } from '../types';
-import { timeToMs } from '../utils/timeUtils';
+import { msToVtt, timeToMs } from '../utils/timeUtils';
 
 // Helper to get the Gemini client using either the user's Settings key or env key
 const getAiClient = () => {
@@ -251,6 +251,211 @@ export const transcribeAudio = async (
     throw error;
   } finally {
     // Clean up uploaded large file from Google servers
+    if (uploadedFileName) {
+      try {
+        await ai.files.delete({ name: uploadedFileName });
+      } catch (cleanupErr) {
+        console.warn('Could not delete temporary uploaded file:', cleanupErr);
+      }
+    }
+  }
+};
+
+export const alignLyricsToAudio = async (
+  file: File,
+  cues: Cue[],
+  model: string,
+  signal?: AbortSignal
+): Promise<Cue[]> => {
+  const MAX_FILE_SIZE = 500 * 1024 * 1024;
+  if (file.size > MAX_FILE_SIZE) {
+    throw new Error(
+      'File size exceeds 500MB limit. Please compress or split the audio file.'
+    );
+  }
+
+  const alignableCues = cues.filter((cue) => cue.text.trim());
+  if (alignableCues.length === 0) {
+    throw new Error('There are no lyrics to align.');
+  }
+
+  const ai = getAiClient();
+  const modelName = resolveModelId(model);
+  let audioContentPart: any;
+  let uploadedFileName: string | null = null;
+
+  try {
+    if (file.size >= 15 * 1024 * 1024) {
+      const uploadResult = await ai.files.upload({
+        file,
+        config: { mimeType: file.type || 'audio/mp3' },
+      });
+
+      uploadedFileName = uploadResult.name;
+      audioContentPart = {
+        fileData: {
+          fileUri: uploadResult.uri,
+          mimeType: uploadResult.mimeType || file.type || 'audio/mp3',
+        },
+      };
+    } else {
+      audioContentPart = await fileToPart(file);
+    }
+
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+
+    const wordSchema = {
+      type: Type.OBJECT,
+      properties: {
+        text: { type: Type.STRING },
+        start: { type: Type.STRING },
+        end: { type: Type.STRING },
+      },
+      required: ['text', 'start', 'end'],
+    };
+    const cueSchema = {
+      type: Type.OBJECT,
+      properties: {
+        index: { type: Type.NUMBER },
+        words: { type: Type.ARRAY, items: wordSchema },
+      },
+      required: ['index', 'words'],
+    };
+
+    const lyricInput = alignableCues.map((cue, index) => ({
+      index,
+      start: msToVtt(cue.start),
+      end: msToVtt(cue.end),
+      text: cue.text,
+    }));
+    const request = ai.models.generateContent({
+      model: modelName,
+      contents: {
+        parts: [
+          audioContentPart,
+          {
+            text: `Align the supplied existing lyrics to this audio. Do not transcribe, rewrite, translate, omit, or reorder lyrics. Return exactly one result per input line, in the same order. For each line, split its exact text into words and provide each word's absolute start and end timestamp in MM:SS.mmm format (use HH:MM:SS.mmm after one hour). Use the supplied line times as a guide, but listen to the audio for each word boundary. Do not evenly distribute words. Leave gaps for pauses. Keep punctuation attached to its word. Return only JSON matching the schema.\n\nExisting lines:\n${JSON.stringify(lyricInput)}`,
+          },
+        ],
+      },
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.ARRAY,
+          items: cueSchema,
+        },
+        temperature: 0,
+      },
+    });
+
+    const response = signal
+      ? await new Promise<Awaited<typeof request>>((resolve, reject) => {
+          const handleAbort = () =>
+            reject(new DOMException('Aborted', 'AbortError'));
+          signal.addEventListener('abort', handleAbort, { once: true });
+          request.then(resolve, reject).finally(() =>
+            signal.removeEventListener('abort', handleAbort)
+          );
+        })
+      : await request;
+
+    if (!response.text) {
+      throw new Error('The AI returned no word timings.');
+    }
+
+    const alignedResults: unknown = JSON.parse(response.text);
+    if (
+      !Array.isArray(alignedResults) ||
+      alignedResults.length !== alignableCues.length
+    ) {
+      throw new Error('The AI returned an incomplete set of aligned lines.');
+    }
+
+    const normalizeText = (text: string) =>
+      text
+        .normalize('NFKC')
+        .toLocaleLowerCase()
+        .replace(/[\s\p{P}\p{S}]/gu, '');
+    const wordsByCueId = new Map<string, Cue['words']>();
+
+    alignedResults.forEach((result: unknown, index: number) => {
+      const originalCue = alignableCues[index];
+      if (
+        !result ||
+        typeof result !== 'object' ||
+        !('index' in result) ||
+        result.index !== index
+      ) {
+        throw new Error('The AI returned lines in an unexpected order.');
+      }
+      if (
+        !('words' in result) ||
+        !Array.isArray(result.words) ||
+        result.words.length === 0
+      ) {
+        throw new Error(`The AI returned no words for line ${index + 1}.`);
+      }
+
+      const words = result.words.map((word: unknown, wordIndex: number) => {
+        if (
+          !word ||
+          typeof word !== 'object' ||
+          !('text' in word) ||
+          typeof word.text !== 'string' ||
+          !('start' in word) ||
+          typeof word.start !== 'string' ||
+          !('end' in word) ||
+          typeof word.end !== 'string' ||
+          !/^\d{1,3}:\d{2}(?::\d{2})?\.\d{1,3}$/.test(word.start) ||
+          !/^\d{1,3}:\d{2}(?::\d{2})?\.\d{1,3}$/.test(word.end)
+        ) {
+          throw new Error(`The AI returned invalid timing for line ${index + 1}.`);
+        }
+
+        const start = timeToMs(word.start);
+        const end = timeToMs(word.end);
+        if (
+          !Number.isFinite(start) ||
+          !Number.isFinite(end) ||
+          start < 0 ||
+          end < start
+        ) {
+          throw new Error(`The AI returned invalid timing for line ${index + 1}.`);
+        }
+
+        return {
+          id: `${originalCue.id}-word-${wordIndex}`,
+          text: word.text,
+          start,
+          end,
+        };
+      });
+
+      if (
+        words.map((word) => normalizeText(word.text)).join('') !==
+        normalizeText(originalCue.text)
+      ) {
+        throw new Error(
+          `The AI changed or missed words in line ${index + 1}; no timings were applied.`
+        );
+      }
+
+      wordsByCueId.set(originalCue.id, words);
+    });
+
+    return cues.map((cue) => {
+      const words = wordsByCueId.get(cue.id);
+      return words ? { ...cue, words } : cue;
+    });
+  } catch (error: any) {
+    if (error.name === 'AbortError' || signal?.aborted) {
+      throw new Error('Word alignment cancelled by user.');
+    }
+    console.error('Word alignment failed', error);
+    throw error;
+  } finally {
     if (uploadedFileName) {
       try {
         await ai.files.delete({ name: uploadedFileName });

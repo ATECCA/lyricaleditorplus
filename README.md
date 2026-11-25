@@ -1,78 +1,50 @@
 # Lyrical Editor Plus
 
-**The Ultimate Modern Lyrics & Subtitle Editor**
+A browser-based editor for creating, syncing, and exporting lyrics and subtitles. Load a media file to sync lines by hand, transcribe with Gemini, or add word timings to lyrics you already have.
 
-Lyrical Editor Plus is a professional-grade, web-based tool designed for creators who need precision, speed, and flexibility. Built with a mobile-first approach, it offers a sleek, dark-mode-ready interface for editing **LRC**, **SRT**, **VTT**, **TTML**, and **YouTube SRV** files.
+## What it does
 
-For a version with Web Speech API Text-to-Speech, use the `web-speech-api` branch.
+- **Edit and sync:** Work with LRC, SRT, VTT, TTML, YouTube SRV, JSON, and plain-text files. Play audio or video alongside your lyrics and adjust cue and word timings.
+- **Transcribe with AI:** Turn audio or video into line-level or word-level lyrics.
+- **Align existing lyrics:** In the media panel, choose **Align Existing Lyrics** to time the words in your current cues against the loaded audio. It preserves lyric text and line timings; review the results in Word view before exporting. Existing word timings require confirmation before they are replaced.
+- **Generate or refine lyrics:** Use the AI Assistant to generate lyrics or request text changes such as translation and proofreading.
+- **Edit precisely:** Use undo/redo, keyboard shortcuts, timing adjustments, and tools for managing word timings.
 
-Powered by **Google Gemini AI**, it automates tedious tasks like transcription, synchronization, and content generation.
+## Export
 
-![Home Screen](screenshot-home.jpg)
+Export standard subtitles as **LRC, SRT, VTT, TTML**, or **YouTube SRV**. Word-timed lyrics can be exported as **Enhanced LRC**, **karaoke VTT**, **karaoke TTML**, or **YouTube SRV words**. Structured JSON and plain text exports are also available.
 
-## 🚀 Key Features
+## Run locally
 
-### 🎧 Universal Media & Format Support
-*   **Formats:** Full support for `LRC` (Simple & Enhanced), `SRT`, `VTT`, `TTML`, `JSON`, `TXT`, and **YouTube SRV** formats (`SRV1`, `SRV2`, `SRV3`, including YouTube `JSON3` variants).
-*   **Media Sync:** Load any audio or video file to visualize playback. The editor locks sync with your media for frame-perfect timing.
-*   **Responsive Design:** Optimized for desktops, tablets, and mobile devices with a seamless **Light/Dark mode** toggle.
+Requires Node.js and npm.
 
-### 🤖 AI-Powered Intelligence
-*   **Transcription:** Instantly convert audio/video to text using **Gemini 2.5 Flash** or **Gemini 3.0 Flash**. Choose between standard lines or **Word-Level Karaoke** mode.
-*   **Creative Generation:** Generate lyrics from scratch based on a mood or topic using **Gemini 3.0 Pro**.
-*   **Smart Refinement:** Use the AI Assistant to translate, fix grammar, or reformat lyrics with natural language instructions.
+```bash
+git clone https://github.com/ATECCA/lyricaleditorplus.git
+cd lyricaleditorplus
+npm install
+cp .env.example .env
+```
 
-### 🎚️ Precision Editing Tools
-*   **Karaoke Mode:** Deep dive into 'Word' view to adjust millisecond-level timing for individual words. Built-in support for YouTube word-level timing (`append="1"` and `<s>` tags).
-*   **Text-to-Speech (TTS):** Built-in pronunciation checks. Click the speaker icon on any line or word to hear it spoken.
-*   **Hot Fixes:** One-click tools to:
-    *   Compact whitespace
-    *   Fill gaps between words
-    *   Remove empty entries
-    *   Auto-generate word timings
+Add your Gemini API key to `.env`:
 
-### 🎹 Keyboard Shortcuts
+```env
+GEMINI_API_KEY=your_google_api_key
+```
 
-| Key | Action |
-| :--- | :--- |
-| **Space** | Play / Pause Media |
-| **Ctrl + Z** | Undo |
-| **Ctrl + Shift + Z** | Redo |
-| **- / _** | Nudge Time Backward (-100ms) |
-| **+ / =** | Nudge Time Forward (+100ms) |
+Start the development server:
 
-## 🛠️ Advanced Toolkit
+```bash
+npm run dev
+```
 
-Located in the **Global Tools** menu and bottom toolbar:
+Vite serves the app at `http://localhost:3000`.
 
-*   **Shift Time:** Bulk offset timestamps (e.g., +500ms) for the entire file or selected rows.
-*   **Find & Replace:** Global text substitution.
-*   **Looping:** Toggle repeat mode to focus on specific sections during playback.
-*   **Sort Rows:** Chronologically reorder cues if they get out of sync.
+## AI and media privacy
 
-![Editor Interface](screenshot-editor.jpg)
+AI features require a Google Gemini API key. Using transcription or word alignment sends the selected media and, for alignment, the existing lyrics to Gemini. Files of 15 MB or more are uploaded to Gemini's Files API and the app attempts to delete those temporary uploads after processing. The app limits media files to 500 MB.
 
-## 📦 Export Options
+For public deployments, do not bundle a shared API key in the browser app. Use a protected server-side proxy or have each user provide their own key.
 
-*   **Subtitles:** `SRT`, `VTT`, `TTML`, `LRC`, `YouTube SRV1/SRV2/SRV3`
-*   **Karaoke:** `Enhanced LRC`, `VTT (Karaoke)`, `TTML (Span tags)`, `YouTube SRV (Words)`
-*   **Data:** `Structured JSON`, `TXT`
+## License
 
-## 🔧 Setup & Installation
-
-1.  Clone the repository.
-2.  Install dependencies:
-    ```bash
-    npm install
-    ```
-3.  Create a `.env` file and add your Google Gemini API key:
-    ```env
-    GEMINI_API_KEY=your_google_api_key
-    ```
-4.  Start the development server:
-    ```bash
-    npm run dev
-    ```
-
-## 📄 License
-MIT License.
+MIT

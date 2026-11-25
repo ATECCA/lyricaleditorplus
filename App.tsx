@@ -6,7 +6,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { FileData, SubtitleFormat, Cue, Word, Metadata } from './types';
 import { detectFormat, parseContent, stringifyContent } from './services/subtitleParser';
 import { msToLrc } from './utils/timeUtils';
-import { transcribeAudio, generateLyrics } from './services/aiService';
+import { transcribeAudio, alignLyricsToAudio, generateLyrics } from './services/aiService';
 import CueList from './components/CueList';
 import WordDetail from './components/WordDetail';
 import AIAssistant from './components/AIAssistant';
@@ -215,6 +215,8 @@ export function App() {
   const [sidebarTranscribeMode, setSidebarTranscribeMode] = useState<'lines' | 'words'>('lines'); // Separate state for sidebar
   const [isTranscribing, setIsTranscribing] = useState(false);
   const transcriptionAbortCtrl = useRef<AbortController | null>(null);
+  const [isAligningWords, setIsAligningWords] = useState(false);
+  const wordAlignmentAbortCtrl = useRef<AbortController | null>(null);
 
   // Apply Theme
   useEffect(() => {
@@ -645,6 +647,48 @@ export function App() {
         }
     }
     runTranscription(sidebarTranscribeModel, sidebarTranscribeMode);
+  };
+
+  const stopWordAlignment = () => {
+    wordAlignmentAbortCtrl.current?.abort();
+    wordAlignmentAbortCtrl.current = null;
+    setIsAligningWords(false);
+  };
+
+  const handleAlignExistingLyrics = async () => {
+    if (!mediaFile || cues.length === 0) return;
+    if (
+      cues.some((cue) => cue.words?.length) &&
+      !window.confirm('This will replace existing word timings while keeping your lyric text and line timings. Continue?')
+    ) {
+      return;
+    }
+
+    const controller = new AbortController();
+    wordAlignmentAbortCtrl.current = controller;
+    setIsAligningWords(true);
+    try {
+      const alignedCues = await alignLyricsToAudio(
+        mediaFile,
+        cues,
+        sidebarTranscribeModel,
+        controller.signal
+      );
+      updateCues(alignedCues);
+      setViewMode('word');
+      alert('Word timings added to your existing lyrics. Review them in Word view before exporting.');
+    } catch (e: any) {
+      if (e.message === 'Word alignment cancelled by user.' || e.name === 'AbortError') {
+        return;
+      }
+      console.error(e);
+      alert(`Word alignment failed: ${e.message || 'Please check your API key and audio file.'}`);
+    } finally {
+      if (wordAlignmentAbortCtrl.current === controller) {
+        wordAlignmentAbortCtrl.current = null;
+        setIsAligningWords(false);
+      }
+    }
   };
 
   const handleExport = (format: SubtitleFormat) => {
@@ -1529,7 +1573,7 @@ export function App() {
                               <div className="p-4">
                                   <div className="flex items-center justify-between mb-1">
                                       <h4 className="font-semibold text-sm truncate pr-2" title={mediaName || ''}>{mediaName}</h4>
-                                      <button onClick={() => { setMediaUrl(null); setMediaType(null); setMediaName(null); setIsPlaying(false); }} className="text-xs text-red-500 hover:text-red-600 font-medium">Remove</button>
+                                      <button onClick={removeMedia} className="text-xs text-red-500 hover:text-red-600 font-medium">Remove</button>
                                   </div>
                                   <p className="text-xs text-neutral-400">{mediaType === 'video' ? 'Video File' : 'Audio File'} • {msToLrc(duration)}</p>
                               </div>
@@ -1565,6 +1609,7 @@ export function App() {
                                 </div>
                                 <button 
                                    onClick={isTranscribing ? stopTranscription : handleSidebarTranscribe}
+                                   disabled={isAligningWords}
                                    className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition ${isTranscribing ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:opacity-90'}`}
                                 >
                                    {isTranscribing ? (
@@ -1573,6 +1618,22 @@ export function App() {
                                        <> <RefreshCw size={16} /> Re-Transcribe </>
                                    )}
                                 </button>
+                                <div className="pt-2 border-t border-neutral-200 dark:border-neutral-700">
+                                   <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
+                                      Add word timings to your current lyrics without changing their text or line times.
+                                   </p>
+                                   <button
+                                      onClick={isAligningWords ? stopWordAlignment : handleAlignExistingLyrics}
+                                      disabled={!isAligningWords && (isTranscribing || cues.length === 0)}
+                                      className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition disabled:opacity-50 disabled:cursor-not-allowed ${isAligningWords ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-primary-600 hover:bg-primary-700 text-white'}`}
+                                   >
+                                      {isAligningWords ? (
+                                          <> <Loader2 size={16} className="animate-spin" /> Stop Alignment </>
+                                      ) : (
+                                          <> <Wand2 size={16} /> Align Existing Lyrics </>
+                                      )}
+                                   </button>
+                                </div>
                              </div>
                           </div>
                        </div>
