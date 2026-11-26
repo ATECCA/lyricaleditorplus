@@ -628,7 +628,7 @@ export function App() {
           } else {
               console.error(e);
               const msg = e.message || 'Transcription failed';
-              alert(`Error: ${msg}. Please check API Key and file size.`);
+              alert(`Transcription failed: ${msg}`);
           }
       } finally {
           if (transcriptionAbortCtrl.current === controller) {
