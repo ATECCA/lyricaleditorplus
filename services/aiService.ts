@@ -10,8 +10,10 @@ const getAiClient = () => {
         localStorage.getItem('GEMINI_API_KEY') ||
         localStorage.getItem('apiKey')
       : null;
-  const apiKey = savedKey || process.env.API_KEY || '';
-  return new GoogleGenAI({ apiKey });
+  if (!savedKey) {
+    throw new Error('Add your Gemini API key using the key button before using AI features.');
+  }
+  return new GoogleGenAI({ apiKey: savedKey });
 };
 
 /**
@@ -198,18 +200,36 @@ export const transcribeAudio = async (
   };
 
   try {
-    const generateReq = ai.models.generateContent({
-      model: modelName,
-      contents: {
-        parts: [audioContentPart, { text: prompt }],
-      },
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: responseSchema,
-        temperature: 0.0,
-        topP: 0.8,
-      },
-    });
+    const contents = {
+      parts: [
+        audioContentPart,
+        { text: `${prompt}\nReturn only a valid JSON array. Do not include Markdown or commentary.` },
+      ],
+    };
+    const generateReq = (async () => {
+      try {
+        return await ai.models.generateContent({
+          model: modelName,
+          contents,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema,
+            temperature: 0.0,
+            topP: 0.8,
+          },
+        });
+      } catch (error) {
+        if (!String(error).includes('JSON mode is not enabled for this model')) {
+          throw error;
+        }
+        console.warn('Model does not support JSON mode; retrying with JSON-only instructions.');
+        return ai.models.generateContent({
+          model: modelName,
+          contents,
+          config: { temperature: 0.0, topP: 0.8 },
+        });
+      }
+    })();
 
     let response;
 
@@ -226,7 +246,8 @@ export const transcribeAudio = async (
     }
 
     if (response.text) {
-      const rawCues = JSON.parse(response.text);
+      const jsonText = response.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+      const rawCues = JSON.parse(jsonText);
       return rawCues.map((c: any, index: number) => ({
         id: `ai-${index}-${Date.now()}`,
         start: parseAiTimestamp(c.start),
@@ -317,3 +338,109 @@ export const generateLyrics = async (
     throw error;
   }
 };
+
+export const refineLyrics = async (
+  cues: Cue[],
+  instruction: string,
+  model = 'gemini-2.5-flash'
+): Promise<Cue[]> => {
+  const ai = getAiClient();
+  const simplifiedCues = cues.map(({ id, text }) => ({ id, text }));
+  const responseSchema = {
+    type: Type.ARRAY,
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        id: { type: Type.STRING },
+        text: { type: Type.STRING },
+      },
+      required: ['id', 'text'],
+    },
+  };
+  const prompt = `Refine these lyrics according to the instruction: "${instruction}".
+` +
+    `Return a JSON array with each cue's id and revised text. Preserve existing ids.
+` +
+    JSON.stringify(simplifiedCues);
+
+  try {
+    const response = await ai.models.generateContent({
+      model: resolveModelId(model),
+      contents: prompt,
+      config: { responseMimeType: 'application/json', responseSchema },
+    });
+    if (!response.text) return cues;
+
+    const parsed: unknown = JSON.parse(response.text);
+    if (!Array.isArray(parsed)) throw new Error('AI returned an invalid lyrics list.');
+
+    const originalCues = new Map(cues.map((cue) => [cue.id, cue]));
+    const refinedCues: Cue[] = [];
+    let lastEnd = 0;
+    for (const item of parsed) {
+      if (typeof item !== 'object' || item === null || typeof item.text !== 'string') {
+        throw new Error('AI returned a lyrics item without text.');
+      }
+      const id = typeof item.id === 'string' ? item.id : undefined;
+      const original = id ? originalCues.get(id) : undefined;
+      if (original) {
+        refinedCues.push({
+          ...original,
+          text: item.text,
+          words: item.text === original.text ? original.words : undefined,
+        });
+        lastEnd = original.end;
+      } else {
+        refinedCues.push({
+          id: id || `refine-${Date.now()}-${refinedCues.length}`,
+          start: lastEnd,
+          end: lastEnd + 2000,
+          text: item.text,
+        });
+        lastEnd += 2000;
+      }
+    }
+    return refinedCues;
+  } catch (error) {
+    console.error('Refinement failed', error);
+    throw error;
+  }
+};
+
+let currentUtterance: SpeechSynthesisUtterance | null = null;
+
+export const stopTTS = (): void => {
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+  currentUtterance = null;
+};
+
+export const playTTS = (text: string, language = 'en'): Promise<void> => {
+  const textToSpeak = text.trim();
+  if (!textToSpeak) return Promise.resolve();
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    return Promise.reject(new Error('Text-to-speech is not supported in this browser.'));
+  }
+
+  stopTTS();
+  return new Promise((resolve, reject) => {
+    const utterance = new SpeechSynthesisUtterance(textToSpeak);
+    utterance.lang = language;
+    currentUtterance = utterance;
+    utterance.onend = () => {
+      if (currentUtterance === utterance) currentUtterance = null;
+      resolve();
+    };
+    utterance.onerror = (event) => {
+      if (currentUtterance === utterance) currentUtterance = null;
+      if (event.error === 'canceled' || event.error === 'interrupted') {
+        resolve();
+      } else {
+        reject(new Error(`Text-to-speech failed: ${event.error}`));
+      }
+    };
+    window.speechSynthesis.speak(utterance);
+  });
+};
+
