@@ -317,3 +317,25 @@ export const generateLyrics = async (
     throw error;
   }
 };
+
+export const stopTTS = (): void => {
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+};
+
+export const playTTS = (text: string, language?: string): Promise<void> => {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    return Promise.reject(new Error('Text-to-speech is not supported in this browser.'));
+  }
+
+  stopTTS();
+  return new Promise((resolve, reject) => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    if (language) utterance.lang = language;
+    utterance.onend = () => resolve();
+    utterance.onerror = (event) => reject(new Error(`Text-to-speech failed: ${event.error}`));
+    window.speechSynthesis.speak(utterance);
+  });
+};
+
