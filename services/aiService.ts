@@ -200,18 +200,36 @@ export const transcribeAudio = async (
   };
 
   try {
-    const generateReq = ai.models.generateContent({
-      model: modelName,
-      contents: {
-        parts: [audioContentPart, { text: prompt }],
-      },
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: responseSchema,
-        temperature: 0.0,
-        topP: 0.8,
-      },
-    });
+    const contents = {
+      parts: [
+        audioContentPart,
+        { text: `${prompt}\nReturn only a valid JSON array. Do not include Markdown or commentary.` },
+      ],
+    };
+    const generateReq = (async () => {
+      try {
+        return await ai.models.generateContent({
+          model: modelName,
+          contents,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema,
+            temperature: 0.0,
+            topP: 0.8,
+          },
+        });
+      } catch (error) {
+        if (!String(error).includes('JSON mode is not enabled for this model')) {
+          throw error;
+        }
+        console.warn('Model does not support JSON mode; retrying with JSON-only instructions.');
+        return ai.models.generateContent({
+          model: modelName,
+          contents,
+          config: { temperature: 0.0, topP: 0.8 },
+        });
+      }
+    })();
 
     let response;
 
@@ -228,7 +246,8 @@ export const transcribeAudio = async (
     }
 
     if (response.text) {
-      const rawCues = JSON.parse(response.text);
+      const jsonText = response.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+      const rawCues = JSON.parse(jsonText);
       return rawCues.map((c: any, index: number) => ({
         id: `ai-${index}-${Date.now()}`,
         start: parseAiTimestamp(c.start),
