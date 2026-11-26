@@ -65,14 +65,11 @@ Located in the **Global Tools** menu and bottom toolbar:
     ```bash
     npm install
     ```
-3.  Create a `.env` file and add your Google Gemini API key:
-    ```env
-    GEMINI_API_KEY=your_google_api_key
-    ```
-4.  Start the development server:
+3.  Start the development server:
     ```bash
     npm run dev
     ```
+4. Before using AI features, select the key icon in the app and enter your own Gemini API key. It is saved in this browser only and sent directly to Google; never commit or share your key.
 
 ## 📄 License
 MIT License.
