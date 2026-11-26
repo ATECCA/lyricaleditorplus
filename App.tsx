@@ -10,6 +10,7 @@ import { transcribeAudio, generateLyrics } from './services/aiService';
 import CueList from './components/CueList';
 import WordDetail from './components/WordDetail';
 import AIAssistant from './components/AIAssistant';
+import ApiKeySettings from './components/ApiKeySettings';
 import { 
   Upload, 
   Download, 
@@ -998,6 +999,7 @@ export function App() {
       >
         {/* Absolute Buttons Top Right */}
         <div className="absolute top-6 right-6 flex items-center gap-2">
+           <ApiKeySettings />
            <button onClick={toggleFullscreen} className="p-3 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition">
              {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
            </button>
@@ -1247,6 +1249,7 @@ export function App() {
         </div>
 
         <div className="flex items-center gap-1 md:gap-2 shrink-0">
+           <ApiKeySettings />
            <button 
              onClick={toggleFullscreen}
              className="p-2.5 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 transition"
