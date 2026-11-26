@@ -75,4 +75,7 @@ Located in the **Global Tools** menu and bottom toolbar:
     ```
 
 ## 📄 License
-MIT License.
+
+The upstream repository README says "MIT License," but no `LICENSE` file is present in that repository or this fork. The license has not been independently verified; confirm the applicable terms with the upstream author before relying on them.
+
+This is a fork of [dotslashgabut/lyricaleditorplus](https://github.com/dotslashgabut/lyricaleditorplus).
