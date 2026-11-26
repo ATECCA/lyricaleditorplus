@@ -10,8 +10,10 @@ const getAiClient = () => {
         localStorage.getItem('GEMINI_API_KEY') ||
         localStorage.getItem('apiKey')
       : null;
-  const apiKey = savedKey || process.env.API_KEY || '';
-  return new GoogleGenAI({ apiKey });
+  if (!savedKey) {
+    throw new Error('Add your Gemini API key using the key button before using AI features.');
+  }
+  return new GoogleGenAI({ apiKey: savedKey });
 };
 
 /**
